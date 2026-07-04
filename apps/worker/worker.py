@@ -5,7 +5,7 @@ logger = logging.getLogger("excel-visual-analytics-worker")
 
 
 def run_once() -> None:
-    logger.info("worker is ready for queued parsing tasks")
+    logger.info("worker ready for parsing and refresh jobs")
 
 
 if __name__ == "__main__":

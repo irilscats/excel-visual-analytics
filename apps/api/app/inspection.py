@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import csv
-from io import BytesIO, StringIO, TextIOWrapper
+import hashlib
+import re
+from datetime import date, datetime
+from io import BytesIO, TextIOWrapper
 from pathlib import Path
 from typing import Any
 
@@ -11,8 +14,13 @@ ALLOWED_EXTENSIONS = {".xlsx", ".csv"}
 MAX_FILE_SIZE = 20 * 1024 * 1024
 
 
+def stable_field_id(name: str, index: int) -> str:
+    normalized = re.sub(r"\W+", "_", name.strip().lower()).strip("_") or f"column_{index + 1}"
+    return f"field_{normalized}_{index + 1}"
+
+
 def infer_type(values: list[Any]) -> str:
-    samples = [value for value in values if value not in (None, "")][:50]
+    samples = [value for value in values if value not in (None, "")][:100]
     if not samples:
         return "text"
     if all(isinstance(value, bool) for value in samples):
@@ -21,50 +29,50 @@ def infer_type(values: list[Any]) -> str:
         return "integer"
     if all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in samples):
         return "number"
-    if all(hasattr(value, "isoformat") for value in samples):
+    if all(isinstance(value, (datetime, date)) for value in samples):
         return "datetime"
+    text = [str(value).strip() for value in samples]
+    if all(re.fullmatch(r"-?\d+(\.\d+)?%", value) for value in text):
+        return "percentage"
+    if all(re.fullmatch(r"-?\d+(\.\d+)?", value.replace(",", "")) for value in text):
+        return "number"
     return "text"
 
 
-def inspect_csv(content: bytes, preview_rows: int) -> dict[str, Any]:
-    stream = TextIOWrapper(BytesIO(content), encoding="utf-8-sig", newline="")
-    rows = list(csv.reader(stream))
+def build_sheet(name: str, rows: list[tuple[Any, ...]] | list[list[str]], preview_rows: int) -> dict[str, Any]:
     if not rows:
-        return {"sheets": [{"name": "CSV", "columns": [], "preview": [], "row_count": 0}]}
-    headers = [value or f"Column {index + 1}" for index, value in enumerate(rows[0])]
+        return {"name": name, "columns": [], "preview": [], "row_count": 0}
+    headers = [str(value) if value not in (None, "") else f"Column {index + 1}" for index, value in enumerate(rows[0])]
     data_rows = rows[1:]
     columns = []
     for index, header in enumerate(headers):
         values = [row[index] if index < len(row) else None for row in data_rows]
-        columns.append({"name": header, "type": infer_type(values), "index": index})
+        columns.append({"id": stable_field_id(header, index), "name": header, "type": infer_type(values), "index": index})
     preview = [dict(zip(headers, row, strict=False)) for row in data_rows[:preview_rows]]
-    return {"sheets": [{"name": "CSV", "columns": columns, "preview": preview, "row_count": len(data_rows)}]}
-
-
-def inspect_xlsx(content: bytes, preview_rows: int) -> dict[str, Any]:
-    workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
-    sheets: list[dict[str, Any]] = []
-    for worksheet in workbook.worksheets:
-        rows = list(worksheet.iter_rows(values_only=True))
-        if not rows:
-            sheets.append({"name": worksheet.title, "columns": [], "preview": [], "row_count": 0})
-            continue
-        headers = [str(value) if value not in (None, "") else f"Column {index + 1}" for index, value in enumerate(rows[0])]
-        data_rows = rows[1:]
-        columns = []
-        for index, header in enumerate(headers):
-            values = [row[index] if index < len(row) else None for row in data_rows]
-            columns.append({"name": header, "type": infer_type(values), "index": index})
-        preview = [dict(zip(headers, row, strict=False)) for row in data_rows[:preview_rows]]
-        sheets.append({"name": worksheet.title, "columns": columns, "preview": preview, "row_count": len(data_rows)})
-    return {"sheets": sheets}
+    return {"name": name, "columns": columns, "preview": preview, "row_count": len(data_rows)}
 
 
 def inspect_file(filename: str, content: bytes, preview_rows: int = 20) -> dict[str, Any]:
     extension = Path(filename).suffix.lower()
     if extension not in ALLOWED_EXTENSIONS:
-        raise ValueError("Only .xlsx and .csv files are supported in the first milestone")
+        raise ValueError("当前版本仅支持 .xlsx 和 .csv 文件")
+    if not content:
+        raise ValueError("上传文件为空")
     if len(content) > MAX_FILE_SIZE:
-        raise ValueError("The uploaded file exceeds the 20 MB milestone limit")
-    result = inspect_csv(content, preview_rows) if extension == ".csv" else inspect_xlsx(content, preview_rows)
-    return {"filename": filename, "size": len(content), **result}
+        raise ValueError("上传文件超过 20 MB 限制")
+    if extension == ".csv":
+        stream = TextIOWrapper(BytesIO(content), encoding="utf-8-sig", newline="")
+        sheets = [build_sheet("CSV", list(csv.reader(stream)), preview_rows)]
+    else:
+        workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
+        sheets = [build_sheet(sheet.title, list(sheet.iter_rows(values_only=True)), preview_rows) for sheet in workbook.worksheets]
+    return {"filename": filename, "size": len(content), "checksum": hashlib.sha256(content).hexdigest(), "sheets": sheets}
+
+
+def compare_schemas(previous: list[dict[str, Any]], current: list[dict[str, Any]]) -> dict[str, Any]:
+    old = {column["id"]: column for sheet in previous for column in sheet.get("columns", [])}
+    new = {column["id"]: column for sheet in current for column in sheet.get("columns", [])}
+    added = [new[key] for key in new.keys() - old.keys()]
+    removed = [old[key] for key in old.keys() - new.keys()]
+    changed = [{"previous": old[key], "current": new[key]} for key in old.keys() & new.keys() if old[key]["type"] != new[key]["type"]]
+    return {"added": added, "removed": removed, "changed": changed, "compatible": not removed and not changed}

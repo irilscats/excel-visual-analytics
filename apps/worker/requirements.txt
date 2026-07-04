@@ -1,3 +1,2 @@
-redis
-openpyxl
-polars
+redis==5.2.1
+openpyxl==3.1.5

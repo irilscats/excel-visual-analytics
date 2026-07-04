@@ -1,0 +1,32 @@
+name: 功能需求
+description: 提交产品或工程功能需求
+title: "[Feature] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题与用户价值
+      description: 当前用户遇到什么问题，为什么需要解决？
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 功能范围
+      description: 描述应包含和不包含的内容。
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 使用可验证的检查项描述完成条件。
+      value: |
+        - [ ] 
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: 风险与兼容性
+      description: 数据迁移、历史配置、性能或安全影响。

@@ -1,10 +1,11 @@
 import Dashboard from './components/Dashboard';
 import DesignerPanel from './components/DesignerPanel';
 import Sidebar from './components/Sidebar';
+import { layoutStyles } from './styles';
 
 function App() {
   return (
-    <div className="app-shell">
+    <div style={layoutStyles.shell}>
       <Sidebar />
       <Dashboard />
       <DesignerPanel />

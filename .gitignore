@@ -1,0 +1,25 @@
+# Node
+node_modules/
+dist/
+.vite/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Editors and OS
+.DS_Store
+.vscode/
+.idea/
+
+# Runtime data
+.local-data/
+coverage/

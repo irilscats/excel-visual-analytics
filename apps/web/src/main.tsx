@@ -4,6 +4,7 @@ import App from './App';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Application root was not found');
+document.body.style.margin = '0';
 
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
